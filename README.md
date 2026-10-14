@@ -99,15 +99,14 @@ An unknown name does not fire a webhook. The channel gets `unknown bot. configur
 
 ## 6. Where this runs
 
-Grok Bots live in the cloud, so the callback must be a **public HTTPS URL**. On this box:
+The bridge and the Grok Bots run on the **same box**, so the callback stays local: wakes carry `reply_url=http://127.0.0.1:8787/reply` by default and each routine POSTs its answer there. No tunnel is needed; the bridge only needs outbound HTTPS to Discord and the webhook endpoints.
 
 ```bash
-./scripts/supervise.sh --callback-only   # tunnel + callback, no Discord token needed
-# when DISCORD_BOT_TOKEN + allowlists + webhook secrets are set:
-./scripts/supervise.sh                   # tunnel + full gateway
+./scripts/supervise.sh --callback-only   # /health + /reply only, no Discord token needed
+./scripts/supervise.sh                   # full gateway (needs token, allowlists, webhook secrets)
 ```
 
-`scripts/tunnel.sh` starts a Cloudflare quick tunnel and writes the URL to `.public_url`. Set `CALLBACK_PUBLIC_URL_FILE=.public_url` so the bridge re-reads it on every wake (quick-tunnel hostnames change on restart). Prefer a named Cloudflare tunnel or Tailscale Funnel for a stable hostname.
+Override the URL with `CALLBACK_PUBLIC_URL` (static) or `CALLBACK_PUBLIC_URL_FILE` (re-read on every wake) only if a bot runs elsewhere. `--tunnel` optionally starts a Cloudflare quick tunnel that writes `.public_url`; it needs outbound port 7844 and does not work on sandboxed boxes.
 
 Do not put the signing secret or `CALLBACK_SECRET` in the browser or in git. `REPLY_TIMEOUT_S` (default 900) releases in-flight slots and posts a timeout notice if the bot never calls back.
 
@@ -147,7 +146,3 @@ A message is dropped when:
 - `prompts/keep-alive-routine.md` — in-repo copy of the **discord bridge watchdog** scheduled routine
 - `watch.sh`, `ensure-up.sh` — crash loop and start-if-missing
 - `.github/workflows/ci.yml` — `ruff` + `pytest` on PRs
-
-### Tunnel caveat
-
-`scripts/tunnel.sh` uses `--protocol http2` by default (`TUNNEL_PROTOCOL` to override). cloudflared needs outbound TCP/UDP **7844** to the Cloudflare edge. On hosts that only allow HTTP(S) egress through a proxy (e.g. sandboxed cloud boxes) the quick tunnel cannot register and the public URL returns 530; run the bridge on a machine or VPS with normal egress, or use a named tunnel / Tailscale Funnel there.
