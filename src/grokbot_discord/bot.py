@@ -18,6 +18,7 @@ from grokbot_discord.split import split_message
 from grokbot_discord.webhook import send_wake
 
 log = logging.getLogger("grokbot_discord")
+ACK_EMOJI = "\N{THUMBS UP SIGN}"
 TIMEOUT_TEXT = "No reply from {bot} in time. Try again."
 SWEEP_S = 15.0
 
@@ -69,6 +70,7 @@ class Bridge:
         if not self.pending.try_add(correlation_id, msg.channel_id, msg.message_id, hit.bot.name):
             await channel.send("busy: too many requests waiting in this channel.")
             return
+        await self._react(msg.channel_id, msg.message_id, ACK_EMOJI)
         payload = WakePayload(
             bot=hit.bot.name,
             text=hit.text,
@@ -111,6 +113,15 @@ class Bridge:
         for p in gone:
             await self._send(p.channel_id, TIMEOUT_TEXT.format(bot=p.bot), p.message_id)
         return gone
+
+    async def _react(self, channel_id: str, message_id: str, emoji: str) -> None:
+        try:
+            channel = self.client.get_channel(int(channel_id)) or await self.client.fetch_channel(
+                int(channel_id)
+            )
+            await channel.get_partial_message(int(message_id)).add_reaction(emoji)
+        except Exception:
+            log.exception("react failed channel=%s", channel_id)
 
     async def _send(self, channel_id: str, text: str, reply_to: str = "") -> None:
         try:

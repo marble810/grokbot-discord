@@ -10,9 +10,19 @@ from tests.conftest import make_msg
 class FakeChannel:
     def __init__(self):
         self.sent = []
+        self.reactions = []
 
     async def send(self, text, reference=None):
         self.sent.append(text)
+
+    def get_partial_message(self, message_id):
+        channel = self
+
+        class _Msg:
+            async def add_reaction(self, emoji):
+                channel.reactions.append((message_id, emoji))
+
+        return _Msg()
 
 
 class FakeClient:
@@ -49,6 +59,7 @@ async def test_wake_then_reply(bridge):
     await bridge.b.handle(make_msg(), "99", bridge.channel)
     await _settle()
     assert bridge.channel.sent == []
+    assert [e for _, e in bridge.channel.reactions] == ["\N{THUMBS UP SIGN}"]
     payload = bridge.woke[0]
     assert payload.reply_url.endswith("/reply") and payload.text == "ping"
     assert await bridge.b.on_reply(payload.correlation_id, "pong")
