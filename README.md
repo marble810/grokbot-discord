@@ -147,3 +147,7 @@ A message is dropped when:
 - `prompts/keep-alive-routine.md` — in-repo copy of the **discord bridge watchdog** scheduled routine
 - `watch.sh`, `ensure-up.sh` — crash loop and start-if-missing
 - `.github/workflows/ci.yml` — `ruff` + `pytest` on PRs
+
+### Tunnel caveat
+
+`scripts/tunnel.sh` uses `--protocol http2` by default (`TUNNEL_PROTOCOL` to override). cloudflared needs outbound TCP/UDP **7844** to the Cloudflare edge. On hosts that only allow HTTP(S) egress through a proxy (e.g. sandboxed cloud boxes) the quick tunnel cannot register and the public URL returns 530; run the bridge on a machine or VPS with normal egress, or use a named tunnel / Tailscale Funnel there.

@@ -173,31 +173,15 @@ async def start_callback(settings: Settings, on_reply):  # type: ignore[no-untyp
     return await start_site(app, settings.callback_bind, settings.callback_port)
 
 
-async def _callback_only(settings: Settings) -> None:
-    async def no_pending(_cid: str, _text: str) -> bool:
-        return False
-
-    await start_callback(settings, no_pending)
-    log.info("callback-only mode (no Discord); reply_url=%s", settings.reply_url())
-    await asyncio.Event().wait()
-
-
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
-    if "--callback-only" in sys.argv:
-        import os
-
-        os.environ["CALLBACK_ONLY"] = "true"
     try:
         settings = load_settings()
     except ConfigError as exc:
         log.error("%s", exc)
         sys.exit(2)
-    if "--callback-only" in sys.argv:
-        asyncio.run(_callback_only(settings))
-        return
     if not settings.discord_token:
         log.error("DISCORD_BOT_TOKEN is empty; use --callback-only to test the callback server")
         sys.exit(2)

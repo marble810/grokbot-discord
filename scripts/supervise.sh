@@ -27,7 +27,7 @@ done
 # Also kill a leftover watch.sh / bridge by pattern (best-effort).
 pkill -f "$DIR/watch.sh" 2>/dev/null || true
 pkill -f "python -m grokbot_discord" 2>/dev/null || true
-pkill -f "cloudflared tunnel --url" 2>/dev/null || true
+pkill -f "cloudflared tunnel" 2>/dev/null || true
 sleep 1
 
 "$DIR/scripts/tunnel.sh"

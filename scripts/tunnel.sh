@@ -16,7 +16,7 @@ if ! command -v cloudflared >/dev/null 2>&1; then
 fi
 : > "$LOG"
 # Start in background; scrape the trycloudflare.com URL as it appears.
-cloudflared tunnel --url "http://127.0.0.1:${PORT}" --no-autoupdate >>"$LOG" 2>&1 &
+cloudflared tunnel --protocol "${TUNNEL_PROTOCOL:-http2}" --url "http://127.0.0.1:${PORT}" --no-autoupdate >>"$LOG" 2>&1 &
 echo $! > "$DIR/tunnel.pid"
 echo "cloudflared pid $(cat "$DIR/tunnel.pid"); waiting for public URL…"
 i=0
