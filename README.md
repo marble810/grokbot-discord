@@ -4,7 +4,7 @@ Python Discord gateway for talking to Grok Bots from a private server. One Disco
 
 Licensed under the [MIT License](LICENSE).
 
-Grok Bot has no Discord inbound plugin. A long-running process holds the Gateway, hears an address (a Discord `@mention`, a mapped role, or a leading bot name), replies **Got it.** immediately, POSTs a webhook ping to wake the target Grok Bot, then posts the real reply when that bot calls back.
+Grok Bot has no Discord inbound plugin. A long-running process holds the Gateway, hears an address (a Discord `@mention`, a mapped role, or a leading bot name), POSTs a webhook ping to wake the target Grok Bot, then posts the real reply when that bot calls back.
 
 ```
 Discord  --gateway-->  Python process  --POST webhook-->  Grok Bot
@@ -35,7 +35,7 @@ On each Grok Bot:
 3. Open the routine panel. Copy the webhook URL (`https://api2.cursor.sh/automations/webhook/<id>`).
 4. Copy the webhook **key** (`crsr_…`). Do not paste it into chat or git.
 
-The Discord bridge already replies **Got it.** The webhook routine should send the real answer, not another pickup ack.
+The webhook routine should send the real answer, not another pickup ack.
 
 ## 3. Local config
 
@@ -93,7 +93,7 @@ In the allowlisted channel, any one of these wakes a Grok Bot. You do not need b
 - mention a Discord role mapped in `bots.yaml`
 - `@bridge ping` — uses `DEFAULT_BOT` / `default:` in yaml if set
 
-The channel gets an instant **Got it.** then the real reply when the Grok Bot calls back.
+The channel gets the real reply when the Grok Bot calls back.
 
 An unknown name does not fire a webhook. The channel gets `unknown bot. configured: …`.
 
