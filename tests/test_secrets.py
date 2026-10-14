@@ -24,9 +24,10 @@ def test_examples_have_no_live_secrets():
             "8787",
             "http://127.0.0.1:8787",
             "2",
+            "30",
+            "900",
         }
     yaml = (ROOT / "bots.example.yaml").read_text(encoding="utf-8")
-    assert "WEBHOOK_KEY" not in yaml.split("webhook_key_env")[0] or True
     for marker in LIVE_MARKERS:
         assert marker not in example
         assert marker not in yaml
