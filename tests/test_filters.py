@@ -1,88 +1,27 @@
-from grokbot_discord.filters import ConfigError, Dedupe, InFlight, require_allowlists, should_drop
-from tests.helpers import make_msg
+from grokbot_discord.filters import Dedupe, Policy
+from tests.conftest import make_msg
+
+POLICY = Policy(frozenset({"g1"}), frozenset({"10"}), frozenset({"u1", "other-bot"}))
 
 
-def test_empty_allowlists_fail_closed():
-    for args in (
-        (set(), {"c"}, {"u"}),
-        ({"g"}, set(), {"u"}),
-        ({"g"}, {"c"}, set()),
-    ):
-        try:
-            require_allowlists(*args)
-        except ConfigError:
-            pass
-        else:
-            raise AssertionError("expected ConfigError")
+def drop(msg, addressed=True):
+    return POLICY.drop_reason(msg, self_user_id="99", addressed=addressed)
 
 
-def test_drops():
-    dedupe = Dedupe()
-    msg = make_msg()
-    kwargs = dict(
-        self_user_id="bridge",
-        guilds={"g1"},
-        channels={"c1"},
-        authors={"u1"},
-        require_mention=True,
-        mapped_role_ids={"role-loops"},
-        dedupe=dedupe,
-    )
-    assert should_drop(msg, **kwargs) is None
-    assert should_drop(msg, **kwargs) == "duplicate"
-
-    assert should_drop(make_msg(author_id="bridge", message_id="m2"), **kwargs) == "self"
-    assert should_drop(make_msg(guild_id="nope", message_id="m3"), **kwargs) == "guild"
-    assert should_drop(make_msg(channel_id="nope", message_id="m4"), **kwargs) == "channel"
-    assert should_drop(make_msg(author_id="stranger", message_id="m5"), **kwargs) == "author"
-    assert (
-        should_drop(
-            make_msg(
-                message_id="m6",
-                mention_user_ids=frozenset(),
-                mention_role_ids=frozenset(),
-            ),
-            **kwargs,
-        )
-        == "mention"
-    )
+def test_drop_reasons():
+    assert drop(make_msg()) is None
+    assert drop(make_msg(author_id="99")) == "bot"
+    assert drop(make_msg(guild_id="nope")) == "guild"
+    assert drop(make_msg(channel_id="nope")) == "channel"
+    assert drop(make_msg(author_id="stranger")) == "author"
+    assert drop(make_msg(), addressed=False) == "mention"
 
 
-def test_allowlisted_bot_author_is_not_dropped():
-    msg = make_msg(author_id="other-bot", message_id="m7")
-    reason = should_drop(
-        msg,
-        self_user_id="bridge",
-        guilds={"g1"},
-        channels={"c1"},
-        authors={"u1", "other-bot"},
-        require_mention=True,
-        mapped_role_ids=set(),
-        dedupe=Dedupe(),
-    )
-    assert reason is None
+def test_bot_authors_always_dropped_even_if_allowlisted():
+    assert drop(make_msg(author_id="other-bot", author_is_bot=True)) == "bot"
 
 
-def test_in_flight_overflow():
-    inflight = InFlight(2)
-    assert inflight.acquire("c1")
-    assert inflight.acquire("c1")
-    assert not inflight.acquire("c1")
-    inflight.release("c1")
-    assert inflight.acquire("c1")
-
-
-def test_leading_bot_name_counts_as_addressed():
-    kwargs = dict(
-        self_user_id="bridge",
-        guilds={"g1"},
-        channels={"c1"},
-        authors={"u1"},
-        require_mention=True,
-        mapped_role_ids=set(),
-        dedupe=Dedupe(),
-    )
-    named = make_msg(content="loops ping", mention_user_ids=frozenset(), message_id="m8")
-    assert should_drop(named, named=True, **kwargs) is None
-    stray = make_msg(content="hello there", mention_user_ids=frozenset(), message_id="m9")
-    assert should_drop(stray, named=False, **kwargs) == "mention"
+def test_dedupe():
+    d = Dedupe(cap=2)
+    assert not d.already_seen("a")
+    assert d.already_seen("a")

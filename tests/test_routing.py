@@ -1,69 +1,32 @@
-from grokbot_discord.routing import addressed_by_name, route
-from tests.helpers import make_msg
+from grokbot_discord.routing import Router
+from tests.conftest import make_msg
 
 
-def test_alias_first_token(bots):
-    msg = make_msg(content="<@bridge> loops ping", mention_user_ids=frozenset({"bridge"}))
-    hit = route(msg, bots, self_user_id="bridge", default_bot="loops")
-    assert hit is not None
-    assert hit.bot.name == "loops"
-    assert hit.text == "ping"
+def route(bots, content, mentions=frozenset({"99"}), roles=frozenset(), default="loops"):
+    msg = make_msg(content=content, mention_user_ids=mentions, mention_role_ids=roles)
+    return Router(bots, default).route(msg, "99")
+
+
+def test_alias_after_mention(bots):
+    hit = route(bots, "<@99> loop ping")
+    assert (hit.bot.name, hit.text) == ("loops", "ping")
+
+
+def test_bare_and_at_name(bots):
+    assert route(bots, "loops ping", mentions=frozenset()).text == "ping"
+    assert route(bots, "@XO status", mentions=frozenset()).bot.name == "xo"
 
 
 def test_role_mention(bots):
-    msg = make_msg(
-        content="<@&role-xo> status",
-        mention_user_ids=frozenset(),
-        mention_role_ids=frozenset({"role-xo"}),
-    )
-    hit = route(msg, bots, self_user_id="bridge", default_bot="loops")
-    assert hit is not None
-    assert hit.bot.name == "xo"
-    assert "status" in hit.text
+    hit = route(bots, "<@&role-xo> status", frozenset(), frozenset({"role-xo"}))
+    assert (hit.bot.name, hit.text) == ("xo", "status")
 
 
-def test_multi_role_is_unknown(bots):
-    msg = make_msg(
-        content="hey",
-        mention_user_ids=frozenset({"bridge"}),
-        mention_role_ids=frozenset({"role-loops", "role-xo"}),
-    )
-    assert route(msg, bots, self_user_id="bridge", default_bot="loops") is None
+def test_multi_role_is_none(bots):
+    assert route(bots, "hey", roles=frozenset({"role-loops", "role-xo"})) is None
 
 
-def test_default_when_only_bot_mentioned(bots):
-    msg = make_msg(content="<@bridge> what is in flight?", mention_user_ids=frozenset({"bridge"}))
-    hit = route(msg, bots, self_user_id="bridge", default_bot="loops")
-    assert hit is not None
-    assert hit.bot.name == "loops"
-    assert "what is in flight?" in hit.text
-
-
-def test_unknown_name(bots):
-    msg = make_msg(content="<@bridge> no-such ping", mention_user_ids=frozenset({"bridge"}))
-    hit = route(msg, bots, self_user_id="bridge", default_bot="")
-    assert hit is None
-
-
-def test_bare_name_prefix(bots):
-    msg = make_msg(content="loops ping", mention_user_ids=frozenset())
-    hit = route(msg, bots, self_user_id="bridge", default_bot="loops")
-    assert hit is not None
-    assert hit.bot.name == "loops"
-    assert hit.text == "ping"
-
-
-def test_at_name_prefix(bots):
-    msg = make_msg(content="@xo status", mention_user_ids=frozenset())
-    hit = route(msg, bots, self_user_id="bridge", default_bot="loops")
-    assert hit is not None
-    assert hit.bot.name == "xo"
-    assert hit.text == "status"
-
-
-def test_addressed_by_name(bots):
-    assert addressed_by_name("loops ping", bots)
-    assert addressed_by_name("@XO status", bots)
-    assert not addressed_by_name("please ping loops", bots)
-    assert not addressed_by_name("<@bridge> ping", bots, self_user_id="bridge")
-    assert addressed_by_name("<@bridge> loops ping", bots, self_user_id="bridge")
+def test_default_only_when_mentioned(bots):
+    assert route(bots, "<@99> what?").bot.name == "loops"
+    assert route(bots, "please ping loops", mentions=frozenset()) is None
+    assert route(bots, "<@99> no-such ping", default="") is None

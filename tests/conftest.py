@@ -6,35 +6,19 @@ import pytest
 
 from grokbot_discord.models import BotSpec, IncomingMessage
 
-
-@pytest.fixture
-def bots() -> dict[str, BotSpec]:
-    loops = BotSpec(
-        name="loops",
-        aliases=("loops", "loop"),
-        role_id="role-loops",
-        webhook_url="https://example.test/hooks/loops",
-        webhook_key="secret-loops",
-    )
-    xo = BotSpec(
-        name="xo",
-        aliases=("xo",),
-        role_id="role-xo",
-        webhook_url="https://example.test/hooks/xo",
-        webhook_key="secret-xo",
-    )
-    return {"loops": loops, "xo": xo}
+TEST_SECRET = "whsec_" + "dGVzdC1zaWduaW5nLXNlY3JldC0xMjM0NTY3ODkw"
 
 
 def make_msg(**overrides) -> IncomingMessage:
     base = dict(
-        message_id="m1",
-        channel_id="c1",
+        message_id="1",
+        channel_id="10",
         guild_id="g1",
         author_id="u1",
         author_name="don",
-        content="<@bridge> loops ping",
-        mention_user_ids=frozenset({"bridge"}),
+        author_is_bot=False,
+        content="<@99> loops ping",
+        mention_user_ids=frozenset({"99"}),
         mention_role_ids=frozenset(),
     )
     base.update(overrides)
@@ -42,27 +26,32 @@ def make_msg(**overrides) -> IncomingMessage:
 
 
 @pytest.fixture
-def example_env(tmp_path: Path) -> Path:
-    env = tmp_path / ".env"
-    env.write_text(
+def bots() -> dict[str, BotSpec]:
+    return {
+        "loops": BotSpec("loops", ("loops", "loop"), "role-loops", "https://e.test/l", TEST_SECRET),
+        "xo": BotSpec("xo", ("xo",), "role-xo", "https://e.test/x", TEST_SECRET),
+    }
+
+
+@pytest.fixture
+def example_env(tmp_path: Path, monkeypatch) -> Path:
+    import os
+
+    for key in list(os.environ):
+        if key.startswith(("DISCORD_", "GROK_BOT_", "CALLBACK_", "DRY_RUN", "DEFAULT_BOT")):
+            monkeypatch.delenv(key, raising=False)
+    (tmp_path / ".env").write_text(
         "DISCORD_BOT_TOKEN=dummy-token\n"
         "DISCORD_GUILD_ALLOWLIST=g1\n"
-        "DISCORD_CHANNEL_ALLOWLIST=c1\n"
+        "DISCORD_CHANNEL_ALLOWLIST=10\n"
         "DISCORD_AUTHOR_ALLOWLIST=u1\n"
-        "CALLBACK_SECRET=callback-secret\n"
-        "GROK_BOT_LOOPS_WEBHOOK_URL=https://example.test/hooks/loops\n"
-        "GROK_BOT_LOOPS_WEBHOOK_KEY=secret-loops\n",
+        "CALLBACK_SECRET=callback-secret-callback-secret\n"
+        "GROK_BOT_LOOPS_WEBHOOK_URL=https://e.test/hooks/loops\n"
+        f"GROK_BOT_LOOPS_WEBHOOK_SECRET={TEST_SECRET}\n",
         encoding="utf-8",
     )
-    bots = tmp_path / "bots.yaml"
-    bots.write_text(
-        "default: loops\n"
-        "bots:\n"
-        "  loops:\n"
-        "    aliases: [loops]\n"
-        "    role_id: ''\n"
-        "    webhook_url_env: GROK_BOT_LOOPS_WEBHOOK_URL\n"
-        "    webhook_key_env: GROK_BOT_LOOPS_WEBHOOK_KEY\n",
-        encoding="utf-8",
+    (tmp_path / "bots.yaml").write_text(
+        "default: loops\nbots:\n  loops:\n    aliases: [loops]\n", encoding="utf-8"
     )
+    monkeypatch.chdir(tmp_path)
     return tmp_path

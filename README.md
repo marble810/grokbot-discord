@@ -13,7 +13,9 @@ Discord  --gateway-->  Python process  --POST webhook-->  Grok Bot
      +------ channel post -----+
 ```
 
-The webhook returns 200 when the Grok Bot *wakes*, not when it finishes. Replies are async. The pickup ack is not.
+The webhook returns **202 Accepted** when the Grok Bot *wakes*, not when it finishes. Replies are async. The pickup ack is not.
+
+Wake requests are signed with [Standard Webhooks](https://docs.x.ai/grok/automations/webhooks) HMAC-SHA256 (`webhook-id`, `webhook-timestamp`, `webhook-signature`).
 
 ## 1. Discord application
 
@@ -31,7 +33,7 @@ On each Grok Bot:
 1. Create a routine with trigger type `webhook`.
 2. Use [prompts/webhook-routine.md](prompts/webhook-routine.md) as the prompt.
 3. Open the routine panel. Copy the webhook URL (`https://api2.cursor.sh/automations/webhook/<id>`).
-4. Copy the sender key. Do not paste the key into chat or git.
+4. Copy the **signing secret** (`whsec_…`). It is shown once. Do not paste it into chat or git.
 
 The Discord bridge already replies **Got it.** The webhook routine should send the real answer, not another pickup ack.
 
@@ -50,9 +52,10 @@ Fill `.env`:
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ALLOWLIST`, `DISCORD_CHANNEL_ALLOWLIST`, `DISCORD_AUTHOR_ALLOWLIST` (comma-separated snowflakes)
 - `CALLBACK_SECRET` (a long random string the Grok Bots use when they POST replies)
-- `GROK_BOT_<NAME>_WEBHOOK_URL` and `GROK_BOT_<NAME>_WEBHOOK_KEY` for each bot in `bots.yaml`
+- `GROK_BOT_<NAME>_WEBHOOK_URL` and `GROK_BOT_<NAME>_WEBHOOK_SECRET` (the `whsec_…` signing secret) for each bot in `bots.yaml`
+- `CALLBACK_PUBLIC_URL` **or** `CALLBACK_PUBLIC_URL_FILE` (tunnel script writes the latter; re-read on every wake)
 
-Empty allowlists refuse to start. Empty bots list refuses to start. Missing webhook URL/key refuses to start unless `DRY_RUN=true`.
+Empty allowlists refuse to start. Empty bots list refuses to start. Missing webhook URL/secret refuses to start unless `DRY_RUN=true`.
 
 `bots.yaml` maps names, aliases, and optional Discord role IDs to those env vars. Keys stay in env.
 
@@ -96,7 +99,17 @@ An unknown name does not fire a webhook. The channel gets `unknown bot. configur
 
 ## 6. Where this runs
 
-Grok Bots on the same Linux machine should use `CALLBACK_PUBLIC_URL=http://127.0.0.1:8787`. If a Grok Bot is elsewhere, bind `CALLBACK_BIND=0.0.0.0` and set `CALLBACK_PUBLIC_URL` to an address that bot can reach (Tailscale is enough). Do not put the sender key or `CALLBACK_SECRET` in the browser or in git.
+Grok Bots live in the cloud, so the callback must be a **public HTTPS URL**. On this box:
+
+```bash
+./scripts/supervise.sh --callback-only   # tunnel + callback, no Discord token needed
+# when DISCORD_BOT_TOKEN + allowlists + webhook secrets are set:
+./scripts/supervise.sh                   # tunnel + full gateway
+```
+
+`scripts/tunnel.sh` starts a Cloudflare quick tunnel and writes the URL to `.public_url`. Set `CALLBACK_PUBLIC_URL_FILE=.public_url` so the bridge re-reads it on every wake (quick-tunnel hostnames change on restart). Prefer a named Cloudflare tunnel or Tailscale Funnel for a stable hostname.
+
+Do not put the signing secret or `CALLBACK_SECRET` in the browser or in git. `REPLY_TIMEOUT_S` (default 900) releases in-flight slots and posts a timeout notice if the bot never calls back.
 
 ## Discord bridge watchdog
 
@@ -134,3 +147,7 @@ A message is dropped when:
 - `prompts/keep-alive-routine.md` — in-repo copy of the **discord bridge watchdog** scheduled routine
 - `watch.sh`, `ensure-up.sh` — crash loop and start-if-missing
 - `.github/workflows/ci.yml` — `ruff` + `pytest` on PRs
+
+### Tunnel caveat
+
+`scripts/tunnel.sh` uses `--protocol http2` by default (`TUNNEL_PROTOCOL` to override). cloudflared needs outbound TCP/UDP **7844** to the Cloudflare edge. On hosts that only allow HTTP(S) egress through a proxy (e.g. sandboxed cloud boxes) the quick tunnel cannot register and the public URL returns 530; run the bridge on a machine or VPS with normal egress, or use a named tunnel / Tailscale Funnel there.

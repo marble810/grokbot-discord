@@ -10,3 +10,8 @@ dist/
 build/
 bridge.log
 
+.public_url
+tunnel.log
+tunnel.pid
+bridge.pid
+bots.yaml

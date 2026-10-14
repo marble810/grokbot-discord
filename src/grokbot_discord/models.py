@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 @dataclass(frozen=True)
@@ -9,7 +9,7 @@ class BotSpec:
     aliases: tuple[str, ...]
     role_id: str
     webhook_url: str
-    webhook_key: str
+    webhook_secret: str
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class IncomingMessage:
     guild_id: str
     author_id: str
     author_name: str
+    author_is_bot: bool
     content: str
     mention_user_ids: frozenset[str]
     mention_role_ids: frozenset[str]
@@ -32,6 +33,8 @@ class Route:
 
 @dataclass(frozen=True)
 class WakePayload:
+    """The JSON body sent to a Grok Bot routine. Field order is the wire order."""
+
     bot: str
     text: str
     author_id: str
@@ -43,27 +46,4 @@ class WakePayload:
     correlation_id: str
 
     def as_dict(self) -> dict[str, str]:
-        return {
-            "bot": self.bot,
-            "text": self.text,
-            "author_id": self.author_id,
-            "author_name": self.author_name,
-            "channel_id": self.channel_id,
-            "guild_id": self.guild_id,
-            "message_id": self.message_id,
-            "reply_url": self.reply_url,
-            "correlation_id": self.correlation_id,
-        }
-
-
-WAKE_FIELDS = (
-    "bot",
-    "text",
-    "author_id",
-    "author_name",
-    "channel_id",
-    "guild_id",
-    "message_id",
-    "reply_url",
-    "correlation_id",
-)
+        return asdict(self)
