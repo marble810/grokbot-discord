@@ -3,7 +3,7 @@ bots:
   loops:
     aliases: [loops]
     role_id: ""
-    # Env names default to GROK_BOT_<NAME>_WEBHOOK_URL and _WEBHOOK_SECRET
+    # Env names default to GROK_BOT_<NAME>_WEBHOOK_URL and _WEBHOOK_KEY
     # when omitted. Override only if you need non-default names:
     # webhook_url_env: GROK_BOT_LOOPS_WEBHOOK_URL
-    # webhook_secret_env: GROK_BOT_LOOPS_WEBHOOK_SECRET
+    # webhook_key_env: GROK_BOT_LOOPS_WEBHOOK_KEY

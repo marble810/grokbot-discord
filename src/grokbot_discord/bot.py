@@ -82,9 +82,9 @@ class Bridge:
             reply_url=self.settings.reply_url(),
             correlation_id=correlation_id,
         )
-        self.spawn(self._wake(hit.bot.webhook_url, hit.bot.webhook_secret, payload))
+        self.spawn(self._wake(hit.bot.webhook_url, hit.bot.webhook_key, payload))
 
-    async def _wake(self, url: str, secret: str, payload: WakePayload) -> None:
+    async def _wake(self, url: str, key: str, payload: WakePayload) -> None:
         if self.settings.dry_run:
             self.dry_run_log.append(payload.as_dict())
             log.info("DRY_RUN would POST webhook for bot=%s", payload.bot)
@@ -93,7 +93,7 @@ class Bridge:
         ok = False
         try:
             assert self.session is not None
-            ok = await send_wake(self.session, url, secret, payload)
+            ok = await send_wake(self.session, url, key, payload)
         except (TimeoutError, aiohttp.ClientError):
             log.exception("webhook wake failed for bot=%s", payload.bot)
         if not ok:

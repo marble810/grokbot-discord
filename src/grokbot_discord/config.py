@@ -80,22 +80,23 @@ def load_bots(path: Path, *, dry_run: bool) -> tuple[str, dict[str, BotSpec]]:
     for name, spec in raw_bots.items():
         spec = spec or {}
         url_env = str(spec.get("webhook_url_env") or _env_name(name, "WEBHOOK_URL"))
-        secret_env = str(spec.get("webhook_secret_env") or _env_name(name, "WEBHOOK_SECRET"))
+        key_env = str(spec.get("webhook_key_env") or _env_name(name, "WEBHOOK_KEY"))
         url = os.environ.get(url_env, "")
-        secret = os.environ.get(secret_env, "")
+        # Fallback: older configs named the key _WEBHOOK_SECRET.
+        key = os.environ.get(key_env, "") or os.environ.get(_env_name(name, "WEBHOOK_SECRET"), "")
         # Callback-only / dry-run skips live webhook credentials.
         need_hooks = not dry_run and not _truthy(os.environ.get("CALLBACK_ONLY"), False)
         if need_hooks:
             if not url:
                 raise ConfigError(f"{name}: missing webhook URL ({url_env})")
-            if not secret:
-                raise ConfigError(f"{name}: missing webhook signing secret ({secret_env})")
+            if not key:
+                raise ConfigError(f"{name}: missing webhook key ({key_env})")
         bots[name] = BotSpec(
             name=name,
             aliases=tuple(str(a) for a in (spec.get("aliases") or [name])),
             role_id=str(spec.get("role_id") or ""),
             webhook_url=url,
-            webhook_secret=secret,
+            webhook_key=key,
         )
     if default and default not in bots:
         raise ConfigError(f"default bot {default!r} is not in bots")
