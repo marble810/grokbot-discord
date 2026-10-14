@@ -6,7 +6,7 @@ from grokbot_discord.config import ConfigError, load_settings
 def test_load_ok(example_env):
     s = load_settings(example_env / ".env", example_env / "bots.yaml")
     assert "g1" in s.policy.guilds
-    assert s.bots["loops"].webhook_secret.startswith("whsec_")
+    assert s.bots["loops"].webhook_key.startswith("crsr_")
     assert s.default_bot == "loops"
     assert s.reply_url() == "http://127.0.0.1:8787/reply"
 
@@ -33,10 +33,19 @@ def test_fail_closed(example_env, line):
         load_settings(env, example_env / "bots.yaml")
 
 
-def test_missing_webhook_secret(example_env):
+def _rewrite(env, fn):
+    env.write_text("\n".join(fn(x) for x in env.read_text().splitlines()) + "\n")
+
+
+def test_missing_webhook_key(example_env):
     env = example_env / ".env"
-    env.write_text(
-        "\n".join(x for x in env.read_text().splitlines() if "WEBHOOK_SECRET" not in x) + "\n"
-    )
-    with pytest.raises(ConfigError, match="WEBHOOK_SECRET"):
+    _rewrite(env, lambda x: "" if "WEBHOOK_KEY" in x else x)
+    with pytest.raises(ConfigError, match="WEBHOOK_KEY"):
         load_settings(env, example_env / "bots.yaml")
+
+
+def test_old_secret_name_is_fallback(example_env):
+    env = example_env / ".env"
+    _rewrite(env, lambda x: x.replace("WEBHOOK_KEY", "WEBHOOK_SECRET"))
+    s = load_settings(env, example_env / "bots.yaml")
+    assert s.bots["loops"].webhook_key.startswith("crsr_")

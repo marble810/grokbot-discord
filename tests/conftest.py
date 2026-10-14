@@ -6,7 +6,7 @@ import pytest
 
 from grokbot_discord.models import BotSpec, IncomingMessage
 
-TEST_SECRET = "whsec_" + "dGVzdC1zaWduaW5nLXNlY3JldC0xMjM0NTY3ODkw"
+TEST_KEY = "crsr_" + "test0key0not0real"
 
 
 def make_msg(**overrides) -> IncomingMessage:
@@ -28,8 +28,8 @@ def make_msg(**overrides) -> IncomingMessage:
 @pytest.fixture
 def bots() -> dict[str, BotSpec]:
     return {
-        "loops": BotSpec("loops", ("loops", "loop"), "role-loops", "https://e.test/l", TEST_SECRET),
-        "xo": BotSpec("xo", ("xo",), "role-xo", "https://e.test/x", TEST_SECRET),
+        "loops": BotSpec("loops", ("loops", "loop"), "role-loops", "https://e.test/l", TEST_KEY),
+        "xo": BotSpec("xo", ("xo",), "role-xo", "https://e.test/x", TEST_KEY),
     }
 
 
@@ -47,7 +47,7 @@ def example_env(tmp_path: Path, monkeypatch) -> Path:
         "DISCORD_AUTHOR_ALLOWLIST=u1\n"
         "CALLBACK_SECRET=callback-secret-callback-secret\n"
         "GROK_BOT_LOOPS_WEBHOOK_URL=https://e.test/hooks/loops\n"
-        f"GROK_BOT_LOOPS_WEBHOOK_SECRET={TEST_SECRET}\n",
+        f"GROK_BOT_LOOPS_WEBHOOK_KEY={TEST_KEY}\n",
         encoding="utf-8",
     )
     (tmp_path / "bots.yaml").write_text(

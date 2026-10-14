@@ -9,7 +9,7 @@ class BotSpec:
     aliases: tuple[str, ...]
     role_id: str
     webhook_url: str
-    webhook_secret: str
+    webhook_key: str
 
 
 @dataclass(frozen=True)
