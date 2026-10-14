@@ -1,47 +1,29 @@
-from grokbot_discord.models import WAKE_FIELDS, WakePayload
-from grokbot_discord.webhook import WEBHOOK_TIMEOUT_S, DryRunResult, ping, webhook_request
+import base64
+import hashlib
+import hmac
+import json
+
+from grokbot_discord.models import WakePayload
+from grokbot_discord.webhook import encode, signed_headers
+from tests.conftest import TEST_SECRET
+
+PAYLOAD = WakePayload("loops", "ping", "u1", "don", "10", "g1", "1", "https://x/reply", "abc")
 
 
-def test_headers_timeout_no_retry():
-    req = webhook_request("https://example.test/hook", "the-key", {"bot": "loops"})
-    assert req["headers"]["Authorization"] == "Bearer the-key"
-    assert req["headers"]["X-Automation-Key"] == "the-key"
-    assert req["headers"]["Content-Type"] == "application/json"
-    assert req["timeout"] == 8.0
-    assert WEBHOOK_TIMEOUT_S == 8.0
-    assert "retry" not in req
+def test_signature_matches_standard_webhooks():
+    body = encode(PAYLOAD)
+    h = signed_headers(TEST_SECRET, body, now=1700000000)
+    key = base64.b64decode(TEST_SECRET.removeprefix("whsec_"))
+    signed = f"{h['webhook-id']}.{h['webhook-timestamp']}.".encode() + body
+    expected = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode()
+    assert h["webhook-signature"] == f"v1,{expected}"
+    assert h["webhook-timestamp"] == "1700000000"
+    assert h["webhook-id"].startswith("msg_")
+    assert "authorization" not in {k.lower() for k in h}
 
 
-def test_payload_fields():
-    payload = WakePayload(
-        bot="loops",
-        text="ping",
-        author_id="u1",
-        author_name="don",
-        channel_id="c1",
-        guild_id="g1",
-        message_id="m1",
-        reply_url="http://127.0.0.1:8787/reply",
-        correlation_id="abc",
-    )
-    body = payload.as_dict()
-    assert tuple(body.keys()) == WAKE_FIELDS
-    assert set(body) == set(WAKE_FIELDS)
-
-
-async def test_dry_run_does_not_need_session():
-    payload = WakePayload(
-        bot="loops",
-        text="ping",
-        author_id="u1",
-        author_name="don",
-        channel_id="c1",
-        guild_id="g1",
-        message_id="m1",
-        reply_url="http://127.0.0.1:8787/reply",
-        correlation_id="abc",
-    )
-    result = await ping(None, "https://example.test/hook", "key", payload, dry_run=True)
-    assert isinstance(result, DryRunResult)
-    assert result.payload["bot"] == "loops"
-    assert result.payload["text"] == "ping"
+def test_payload_wire_fields():
+    assert list(json.loads(encode(PAYLOAD))) == [
+        "bot", "text", "author_id", "author_name", "channel_id",
+        "guild_id", "message_id", "reply_url", "correlation_id",
+    ]

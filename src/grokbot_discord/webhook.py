@@ -1,6 +1,13 @@
+"""Wake a Grok Bot routine with a Standard Webhooks signed POST."""
+
 from __future__ import annotations
 
-from typing import Any
+import base64
+import hashlib
+import hmac
+import json
+import time
+import uuid
 
 import aiohttp
 
@@ -9,43 +16,40 @@ from grokbot_discord.models import WakePayload
 WEBHOOK_TIMEOUT_S = 8.0
 
 
-def webhook_request(url: str, key: str, payload: dict[str, str]) -> dict[str, Any]:
+def decode_secret(secret: str) -> bytes:
+    return base64.b64decode(secret.removeprefix("whsec_"))
+
+
+def sign(secret: str, webhook_id: str, timestamp: str, body: bytes) -> str:
+    signed = f"{webhook_id}.{timestamp}.".encode() + body
+    digest = hmac.new(decode_secret(secret), signed, hashlib.sha256).digest()
+    return "v1," + base64.b64encode(digest).decode()
+
+
+def signed_headers(secret: str, body: bytes, *, now: int | None = None) -> dict[str, str]:
+    webhook_id = f"msg_{uuid.uuid4().hex}"
+    timestamp = str(int(time.time()) if now is None else now)
     return {
-        "url": url,
-        "json": payload,
-        "headers": {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-            "X-Automation-Key": key,
-        },
-        "timeout": WEBHOOK_TIMEOUT_S,
+        "content-type": "application/json",
+        "webhook-id": webhook_id,
+        "webhook-timestamp": timestamp,
+        "webhook-signature": sign(secret, webhook_id, timestamp, body),
     }
 
 
-class DryRunResult:
-    def __init__(self, url: str, payload: dict[str, str]) -> None:
-        self.url = url
-        self.payload = payload
-        self.status = 200
+def encode(payload: WakePayload) -> bytes:
+    return json.dumps(payload.as_dict(), separators=(",", ":")).encode()
 
 
-async def ping(
-    session: aiohttp.ClientSession,
-    url: str,
-    key: str,
-    payload: WakePayload,
-    *,
-    dry_run: bool = False,
-) -> int | DryRunResult:
-    body = payload.as_dict()
-    if dry_run:
-        return DryRunResult(url, body)
-    req = webhook_request(url, key, body)
-    timeout = aiohttp.ClientTimeout(total=WEBHOOK_TIMEOUT_S)
+async def send_wake(
+    session: aiohttp.ClientSession, url: str, secret: str, payload: WakePayload
+) -> bool:
+    """POST the signed wake. True on any 2xx (Grok answers 202 Accepted)."""
+    body = encode(payload)
     async with session.post(
-        req["url"],
-        json=req["json"],
-        headers=req["headers"],
-        timeout=timeout,
+        url,
+        data=body,
+        headers=signed_headers(secret, body),
+        timeout=aiohttp.ClientTimeout(total=WEBHOOK_TIMEOUT_S),
     ) as resp:
-        return resp.status
+        return 200 <= resp.status < 300
