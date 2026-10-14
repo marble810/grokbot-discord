@@ -6,12 +6,16 @@ from pathlib import Path
 
 import yaml
 
-from grokbot_discord.filters import ConfigError, require_allowlists
+from grokbot_discord.filters import Policy
 from grokbot_discord.models import BotSpec
 
 
-def parse_id_list(raw: str) -> set[str]:
-    return {part.strip() for part in raw.split(",") if part.strip()}
+class ConfigError(ValueError):
+    pass
+
+
+def parse_id_list(raw: str) -> frozenset[str]:
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
 def load_dotenv(path: Path) -> None:
@@ -22,33 +26,46 @@ def load_dotenv(path: Path) -> None:
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         key, _, value = stripped.partition("=")
-        key = key.strip()
-        value = value.strip().strip("'").strip('"')
-        os.environ.setdefault(key, value)
+        os.environ.setdefault(key.strip(), value.strip().strip("'").strip('"'))
 
 
-def _truthy(raw: str, default: bool) -> bool:
-    if raw == "":
+def _truthy(raw: str | None, default: bool) -> bool:
+    if not raw:
         return default
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
-@dataclass
+@dataclass(frozen=True)
 class Settings:
     discord_token: str
-    guilds: set[str]
-    channels: set[str]
-    authors: set[str]
-    require_mention: bool
+    policy: Policy
     default_bot: str
     bots: dict[str, BotSpec]
     callback_secret: str
     callback_bind: str
     callback_port: int
     callback_public_url: str
+    callback_public_url_file: Path | None
+    callback_rate_per_minute: int
     dry_run: bool
     in_flight_per_channel: int
-    bots_file: Path
+    reply_timeout_s: float
+
+    def public_base_url(self) -> str:
+        """Public callback base. A URL file (written by the tunnel script) wins over env,
+        and is re-read on every wake so a restarted quick tunnel needs no bridge restart."""
+        if self.callback_public_url_file and self.callback_public_url_file.is_file():
+            url = self.callback_public_url_file.read_text(encoding="utf-8").strip()
+            if url:
+                return url.rstrip("/")
+        return self.callback_public_url
+
+    def reply_url(self) -> str:
+        return f"{self.public_base_url()}/reply"
+
+
+def _env_name(bot: str, suffix: str) -> str:
+    return f"GROK_BOT_{bot.upper().replace('-', '_')}_{suffix}"
 
 
 def load_bots(path: Path, *, dry_run: bool) -> tuple[str, dict[str, BotSpec]]:
@@ -62,63 +79,73 @@ def load_bots(path: Path, *, dry_run: bool) -> tuple[str, dict[str, BotSpec]]:
     bots: dict[str, BotSpec] = {}
     for name, spec in raw_bots.items():
         spec = spec or {}
-        aliases = tuple(str(a) for a in (spec.get("aliases") or [name]))
-        role_id = str(spec.get("role_id") or "")
-        url_env = str(spec.get("webhook_url_env") or "")
-        key_env = str(spec.get("webhook_key_env") or "")
-        url = os.environ.get(url_env, "") if url_env else ""
-        key = os.environ.get(key_env, "") if key_env else ""
-        if not dry_run:
+        url_env = str(spec.get("webhook_url_env") or _env_name(name, "WEBHOOK_URL"))
+        secret_env = str(spec.get("webhook_secret_env") or _env_name(name, "WEBHOOK_SECRET"))
+        url = os.environ.get(url_env, "")
+        secret = os.environ.get(secret_env, "")
+        # Callback-only / dry-run skips live webhook credentials.
+        need_hooks = not dry_run and not _truthy(os.environ.get("CALLBACK_ONLY"), False)
+        if need_hooks:
             if not url:
                 raise ConfigError(f"{name}: missing webhook URL ({url_env})")
-            if not key:
-                raise ConfigError(f"{name}: missing webhook key ({key_env})")
+            if not secret:
+                raise ConfigError(f"{name}: missing webhook signing secret ({secret_env})")
         bots[name] = BotSpec(
             name=name,
-            aliases=aliases,
-            role_id=role_id,
+            aliases=tuple(str(a) for a in (spec.get("aliases") or [name])),
+            role_id=str(spec.get("role_id") or ""),
             webhook_url=url,
-            webhook_key=key,
+            webhook_secret=secret,
         )
     if default and default not in bots:
         raise ConfigError(f"default bot {default!r} is not in bots")
     return default, bots
 
 
+def _required_ids(name: str) -> frozenset[str]:
+    ids = parse_id_list(os.environ.get(name, ""))
+    if not ids:
+        raise ConfigError(f"{name} is empty")
+    return ids
+
+
 def load_settings(env_file: Path | None = None, bots_file: Path | None = None) -> Settings:
-    if env_file is None:
-        env_file = Path(".env")
-    load_dotenv(env_file)
-    dry_run = _truthy(os.environ.get("DRY_RUN", ""), False)
-    token = os.environ.get("DISCORD_BOT_TOKEN", "")
-    if not token and not dry_run:
+    load_dotenv(env_file or Path(".env"))
+    env = os.environ.get
+    dry_run = _truthy(env("DRY_RUN"), False)
+    callback_only = _truthy(env("CALLBACK_ONLY"), False)
+    token = env("DISCORD_BOT_TOKEN", "")
+    if not token and not dry_run and not callback_only:
         raise ConfigError("DISCORD_BOT_TOKEN is empty")
-    guilds = parse_id_list(os.environ.get("DISCORD_GUILD_ALLOWLIST", ""))
-    channels = parse_id_list(os.environ.get("DISCORD_CHANNEL_ALLOWLIST", ""))
-    authors = parse_id_list(os.environ.get("DISCORD_AUTHOR_ALLOWLIST", ""))
-    require_allowlists(guilds, channels, authors)
-    bots_path = bots_file or Path(os.environ.get("BOTS_FILE", "bots.yaml"))
-    default_from_file, bots = load_bots(bots_path, dry_run=dry_run)
-    default_bot = os.environ.get("DEFAULT_BOT", "") or default_from_file
-    secret = os.environ.get("CALLBACK_SECRET", "")
-    if not secret and not dry_run:
-        raise ConfigError("CALLBACK_SECRET is empty")
-    port = int(os.environ.get("CALLBACK_PORT", "8787"))
-    in_flight = int(os.environ.get("IN_FLIGHT_PER_CHANNEL", "2"))
-    public = os.environ.get("CALLBACK_PUBLIC_URL", f"http://127.0.0.1:{port}").rstrip("/")
+    policy = Policy(
+        guilds=_required_ids("DISCORD_GUILD_ALLOWLIST"),
+        channels=_required_ids("DISCORD_CHANNEL_ALLOWLIST"),
+        authors=_required_ids("DISCORD_AUTHOR_ALLOWLIST"),
+        require_mention=_truthy(env("REQUIRE_MENTION"), True),
+    )
+    default_from_file, bots = load_bots(
+        bots_file or Path(env("BOTS_FILE", "bots.yaml")), dry_run=dry_run
+    )
+    default_bot = env("DEFAULT_BOT", "") or default_from_file
+    if default_bot and default_bot not in bots:
+        raise ConfigError(f"DEFAULT_BOT {default_bot!r} is not in bots")
+    secret = env("CALLBACK_SECRET", "")
+    if len(secret) < 24:
+        raise ConfigError("CALLBACK_SECRET must be at least 24 characters")
+    port = int(env("CALLBACK_PORT", "8787"))
+    url_file = env("CALLBACK_PUBLIC_URL_FILE", "")
     return Settings(
         discord_token=token,
-        guilds=guilds,
-        channels=channels,
-        authors=authors,
-        require_mention=_truthy(os.environ.get("REQUIRE_MENTION", "true"), True),
+        policy=policy,
         default_bot=default_bot,
         bots=bots,
-        callback_secret=secret or "dry-run",
-        callback_bind=os.environ.get("CALLBACK_BIND", "127.0.0.1"),
+        callback_secret=secret,
+        callback_bind=env("CALLBACK_BIND", "127.0.0.1"),
         callback_port=port,
-        callback_public_url=public,
+        callback_public_url=env("CALLBACK_PUBLIC_URL", f"http://127.0.0.1:{port}").rstrip("/"),
+        callback_public_url_file=Path(url_file) if url_file else None,
+        callback_rate_per_minute=int(env("CALLBACK_RATE_PER_MINUTE", "30")),
         dry_run=dry_run,
-        in_flight_per_channel=in_flight,
-        bots_file=bots_path,
+        in_flight_per_channel=int(env("IN_FLIGHT_PER_CHANNEL", "2")),
+        reply_timeout_s=float(env("REPLY_TIMEOUT_S", "900")),
     )
