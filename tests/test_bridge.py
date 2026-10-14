@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from grokbot_discord.bot import ACK_TEXT, Bridge
+from grokbot_discord.bot import Bridge
 from grokbot_discord.config import load_settings
 from tests.conftest import make_msg
 
@@ -48,7 +48,7 @@ async def _settle():
 async def test_wake_then_reply(bridge):
     await bridge.b.handle(make_msg(), "99", bridge.channel)
     await _settle()
-    assert bridge.channel.sent == [ACK_TEXT]
+    assert bridge.channel.sent == []
     payload = bridge.woke[0]
     assert payload.reply_url.endswith("/reply") and payload.text == "ping"
     assert await bridge.b.on_reply(payload.correlation_id, "pong")

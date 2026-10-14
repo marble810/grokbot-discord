@@ -18,7 +18,6 @@ from grokbot_discord.split import split_message
 from grokbot_discord.webhook import send_wake
 
 log = logging.getLogger("grokbot_discord")
-ACK_TEXT = "Got it."
 TIMEOUT_TEXT = "No reply from {bot} in time. Try again."
 SWEEP_S = 15.0
 
@@ -70,7 +69,6 @@ class Bridge:
         if not self.pending.try_add(correlation_id, msg.channel_id, msg.message_id, hit.bot.name):
             await channel.send("busy: too many requests waiting in this channel.")
             return
-        await self._send(msg.channel_id, ACK_TEXT, msg.message_id)
         payload = WakePayload(
             bot=hit.bot.name,
             text=hit.text,
